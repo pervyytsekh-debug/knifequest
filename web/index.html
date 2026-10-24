@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>VARVAR KNIFE QUEST</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#151b30">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+  canvas{display:block;touch-action:none;outline:none}
+  #ui{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:14px;color:#f2c14e;font:16px/1.4 monospace;text-align:center;background:#000;z-index:5}
+  #ui img{width:96px;height:96px;image-rendering:pixelated}
+  #ui h1{margin:0;font-size:20px;letter-spacing:2px}
+  #bar{width:min(260px,70vw);height:10px;border:2px solid #f2c14e;box-sizing:content-box}
+  #bar i{display:block;height:100%;width:0;background:#f2c14e}
+  #go{display:none;padding:12px 28px;font:inherit;font-size:18px;color:#151b30;background:#f2c14e;border:0;border-radius:6px}
+  #hint{font-size:12px;color:#a8741a;max-width:80vw}
+</style>
+</head>
+<body>
+<div id="ui">
+  <img src="icon-192.png" alt="">
+  <h1>VARVAR KNIFE QUEST</h1>
+  <div id="bar"><i id="fill"></i></div>
+  <button id="go">▶ ГРАТИ</button>
+  <div id="hint">Завантаження…</div>
+</div>
+<script src="wasm_exec.js"></script>
+<script>
+(async () => {
+  const ui = document.getElementById("ui"), fill = document.getElementById("fill"),
+        go = document.getElementById("go"), hint = document.getElementById("hint");
+  if ("serviceWorker" in navigator && location.protocol !== "file:") {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+  let module;
+  try {
+    const resp = await fetch("game.wasm");
+    const total = +resp.headers.get("Content-Length") || 0;
+    const reader = resp.body.getReader();
+    const chunks = []; let got = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value); got += value.length;
+      if (total) fill.style.width = Math.min(100, got / total * 100) + "%";
+    }
+    const bytes = new Uint8Array(got); let o = 0;
+    for (const c of chunks) { bytes.set(c, o); o += c.length; }
+    fill.style.width = "100%";
+    module = await WebAssembly.compile(bytes);
+  } catch (e) {
+    hint.textContent = "Не вдалося завантажити гру: " + e;
+    return;
+  }
+  hint.textContent = "Телефон: тримайте горизонтально. ◄ ► — рух, ▲ — стрибок, » — біг.";
+  go.style.display = "block";
+  go.onclick = async () => {
+    // повний екран + горизонтальна орієнтація (потрібен жест користувача)
+    try { await document.documentElement.requestFullscreen({ navigationUI: "hide" }); } catch (e) {}
+    try { await screen.orientation.lock("landscape"); } catch (e) {}
+    ui.remove();
+    const g = new Go();
+    const inst = await WebAssembly.instantiate(module, g.importObject);
+    g.run(inst);
+  };
+})();
+</script>
+</body>
+</html>
